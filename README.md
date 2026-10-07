@@ -1,3 +1,5 @@
+<img src="Support/AppIcon.png" width="128" alt="MusicAmp icon">
+
 # MusicAmp
 
 A Winamp 2-style player for Apple Music on macOS. It controls Music.app and draws classic Winamp `.wsz` skins,
@@ -95,3 +97,4 @@ swift build
 
 - Sprite coordinates and layout from [Webamp](https://github.com/captbaritone/webamp) by Jordan Eldredge (MIT).
 - The default skin is the Winamp 2.91 base skin by Nullsoft, from the Webamp repository.
+- App icon: `Support/AppIcon-source.jpg`, converted with `swift scripts/make-icon.swift`.

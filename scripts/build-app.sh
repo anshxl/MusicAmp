@@ -10,7 +10,7 @@ app=.build/MusicAmp.app
 rm -rf $app && mkdir -p $app/Contents/MacOS $app/Contents/Resources
 cp .build/release/MusicAmp $app/Contents/MacOS/
 cp Support/MusicAmp-Info.plist $app/Contents/Info.plist
-cp Support/base-2.91.wsz $app/Contents/Resources/
+cp Support/base-2.91.wsz Support/AppIcon.icns $app/Contents/Resources/
 # ponytail: ad-hoc signature changes every build, so macOS may ask for permissions again after a rebuild.
 codesign --force --sign - --identifier local.musicamp $app
 echo "Built $app"

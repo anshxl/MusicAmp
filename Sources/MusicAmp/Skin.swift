@@ -95,7 +95,10 @@ final class Skin {
         var result: [String: [[CGPoint]]] = [:]
         var section = "", counts: [Int] = [], points: [Int] = []
         func flush() {
-            guard !section.isEmpty, result[section] == nil, !counts.isEmpty, counts.allSatisfy({ $0 >= 3 }),
+            // Bound each count by the points present before summing: huge counts from a crafted file
+            // would otherwise overflow (a trap) and, since the skin path is saved, crash every launch.
+            guard !section.isEmpty, result[section] == nil, !counts.isEmpty,
+                  counts.allSatisfy({ $0 >= 3 && $0 <= points.count }),
                   counts.reduce(0, +) * 2 == points.count else { return }
             var polygons: [[CGPoint]] = [], i = 0
             for n in counts {

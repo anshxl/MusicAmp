@@ -53,6 +53,8 @@ func skinSelfTest(defaultSkinURL: URL) throws {
         """)
     precondition(regions["normal"]?.count == 2 && regions["normal"]?[1][2] == CGPoint(x: 15, y: 20), "region polygons")
     precondition(regions["windowshade"] == nil && base.regions.isEmpty, "bad or absent regions are ignored")
+    let huge = Skin.parseRegions("[Normal]\nNumPoints=4611686018427387904,4611686018427387904\nPointList=0,0 1,0 1,1")
+    precondition(huge.isEmpty, "overflowing NumPoints must be rejected, not trap")
 
     // Hotkey specs.
     precondition(HotKey.parse("ctrl+option+w").map { $0.0 == UInt32(kVK_ANSI_W) && $0.1 == UInt32(controlKey | optionKey) } == true)

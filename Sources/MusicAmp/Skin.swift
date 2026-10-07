@@ -9,7 +9,8 @@ final class Skin {
         "main", "titlebar", "cbuttons", "numbers", "nums_ex", "text", "posbar",
         "volume", "balance", "playpaus", "monoster", "shufrep", "eqmain", "pledit",
     ]
-    static let maxEntrySize: UInt64 = 8 << 20 // skips oversized entries (zip bombs)
+    static let maxEntrySize: UInt64 = 8 << 20 // per entry, counted while inflating (zip bombs lie in headers)
+    static let maxImageSide = 2_048 // real skin bitmaps are under 500 px; a BMP header can claim anything
 
     let url: URL
     let visColors: [CGColor] // 24 colours, see viscolor.txt
@@ -32,13 +33,19 @@ final class Skin {
                     || file == "viscolor.txt" && visText == nil
                     || file == "pledit.txt" && pleditText == nil else { continue }
             var data = Data()
-            _ = try archive.extract(entry, skipCRC32: true) { data.append($0) }
+            _ = try archive.extract(entry, skipCRC32: true) { chunk in
+                guard UInt64(data.count + chunk.count) <= Self.maxEntrySize else {
+                    throw CocoaError(.fileReadTooLarge, userInfo: [NSFilePathErrorKey: entry.path])
+                }
+                data.append(chunk)
+            }
             if file == "viscolor.txt" {
                 visText = String(decoding: data, as: UTF8.self)
             } else if file == "pledit.txt" {
                 pleditText = String(decoding: data, as: UTF8.self)
             } else if let src = CGImageSourceCreateWithData(data as CFData, nil),
-                      let img = CGImageSourceCreateImageAtIndex(src, 0, nil) {
+                      let img = CGImageSourceCreateImageAtIndex(src, 0, nil),
+                      img.width <= Self.maxImageSide, img.height <= Self.maxImageSide {
                 images[base] = Self.rgba(img)
             }
         }

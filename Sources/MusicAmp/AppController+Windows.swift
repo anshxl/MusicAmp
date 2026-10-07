@@ -29,6 +29,7 @@ extension AppController {
     func equalizerAction(_ hit: EqualizerView.Hit, in view: EqualizerView) {
         switch hit {
         case .close: toggleEqualizer()
+        case .shade: toggleShade(view)
         case .on:
             eqSettings.enabled.toggle()
             applyEqualizer()
@@ -71,7 +72,7 @@ extension AppController {
         applyEqualizer()
     }
 
-    private func explain(_ title: String, _ detail: String) {
+    func explain(_ title: String, _ detail: String) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = detail

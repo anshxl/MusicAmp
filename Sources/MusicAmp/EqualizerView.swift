@@ -7,7 +7,7 @@ final class EqualizerView: SkinView {
     static let size = CGSize(width: 275, height: 116)
 
     enum Hit: Equatable {
-        case close, on, auto, presets, slider(Int) // slider 0 is the preamp, 1…10 the bands
+        case close, shade, on, auto, presets, slider(Int) // slider 0 is the preamp, 1…10 the bands
     }
 
     var settings = EqualizerDSP.Settings() { didSet { needsDisplay = true } }
@@ -15,6 +15,7 @@ final class EqualizerView: SkinView {
     private var pressed: Hit?
     private var pressedInside = false
     private var draggingSlider: Int?
+    private var dragVolume: Int? // shade mode's volume slider
 
     init(skin: Skin) {
         super.init(skin: skin, baseSize: Self.size)
@@ -23,12 +24,16 @@ final class EqualizerView: SkinView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    override var regionSection: String? { isShaded ? "equalizerws" : "equalizer" }
+    private static let shadeVolume = CGRect(x: 61, y: 4, width: 97, height: 7)
+
     private static func sliderX(_ i: Int) -> CGFloat { i == 0 ? 21 : CGFloat(78 + 18 * (i - 1)) }
     private static let sliderTop: CGFloat = 38, sliderHeight: CGFloat = 63, thumbTravel: CGFloat = 51
 
     private static func rect(_ h: Hit) -> CGRect {
         switch h {
         case .close: CGRect(x: 264, y: 3, width: 9, height: 9)
+        case .shade: CGRect(x: 254, y: 3, width: 9, height: 9)
         case .on: CGRect(x: 14, y: 18, width: 26, height: 12)
         case .auto: CGRect(x: 40, y: 18, width: 32, height: 12)
         case .presets: CGRect(x: 217, y: 18, width: 44, height: 12)
@@ -36,7 +41,8 @@ final class EqualizerView: SkinView {
         }
     }
 
-    private static let hits: [Hit] = [.close, .on, .auto, .presets] + (0...10).map { .slider($0) }
+    private static let hits: [Hit] = [.close, .shade, .on, .auto, .presets] + (0...10).map { .slider($0) }
+    private var activeHits: [Hit] { isShaded ? [.close, .shade] : Self.hits }
 
     /// dB value of slider `i` (0 is the preamp).
     private func value(_ i: Int) -> Double { i == 0 ? settings.preamp : settings.bands[i - 1] }
@@ -47,6 +53,15 @@ final class EqualizerView: SkinView {
 
     override func render(in ctx: CGContext) {
         let down = { (h: Hit) in self.pressed == h && self.pressedInside ? 2 : 0 }
+        if isShaded { // eq_ex.bmp strip: buttons, then volume and (inert) balance thumbs
+            blit(S.EQ.shadeBackground, 0, 0)
+            if down(.shade) > 0 { blit(S.EQ.shadeButtonPressed, 254, 3) }
+            blit(down(.close) > 0 ? S.EQ.shadeClose.1 : S.EQ.shadeClose.0, 264, 3)
+            let f = Double(dragVolume ?? controller?.volume ?? 50) / 100
+            blit(S.EQ.shadeVolumeThumb[f < 1.0 / 3 ? 0 : f > 2.0 / 3 ? 2 : 1], 61 + CGFloat(f * 94).rounded(), 4)
+            blit(S.EQ.shadeBalanceThumb[1], 164 + 20, 4)
+            return
+        }
         blit(S.EQ.background, 0, 0)
         blit(S.EQ.titleBar, 0, 0)
         if down(.close) > 0 { blit(S.EQ.close, 264, 3) }
@@ -87,7 +102,14 @@ final class EqualizerView: SkinView {
 
     override func mouseDown(with e: NSEvent) {
         let p = basePoint(e)
-        guard let h = Self.hits.first(where: { Self.rect($0).contains(p) }) else { return beginWindowDrag() }
+        if isShaded, Self.shadeVolume.contains(p) {
+            dragVolume = volumeAt(p)
+            return needsDisplay = true
+        }
+        guard let h = activeHits.first(where: { Self.rect($0).contains(p) }) else {
+            if p.y < 14, e.clickCount == 2 { return controller?.toggleShade(self) ?? () } // Winamp: double-click title bar
+            return beginWindowDrag()
+        }
         if case .slider(let i) = h {
             draggingSlider = i
             setSlider(i, at: p)
@@ -101,7 +123,10 @@ final class EqualizerView: SkinView {
     override func mouseDragged(with e: NSEvent) {
         let p = basePoint(e)
         if continueWindowDrag() { return }
-        if let i = draggingSlider {
+        if dragVolume != nil {
+            dragVolume = volumeAt(p)
+            controller?.setVolume(dragVolume!)
+        } else if let i = draggingSlider {
             setSlider(i, at: p)
         } else if let h = pressed {
             pressedInside = Self.rect(h).contains(p)
@@ -111,11 +136,15 @@ final class EqualizerView: SkinView {
 
     override func mouseUp(with e: NSEvent) {
         if let h = pressed, pressedInside { controller?.equalizerAction(h, in: self) }
+        if let v = dragVolume { controller?.setVolume(v) }
+        dragVolume = nil
         endWindowDrag()
         pressed = nil
         draggingSlider = nil
         needsDisplay = true
     }
+
+    private func volumeAt(_ p: CGPoint) -> Int { min(100, max(0, Int((p.x - 61 - 1.5) / 94 * 100))) }
 
     /// Maps the mouse to -12…+12 dB in 0.5 dB steps and sends changes to Music while dragging.
     private func setSlider(_ i: Int, at p: CGPoint) {

@@ -8,6 +8,7 @@ final class PlaylistView: SkinView {
     private static let rowHeight: CGFloat = 13, listPadding: CGFloat = 3
     private static let scrollTrack = CGRect(x: 260, y: 20, width: 8, height: 156) // handle travel, 18 px handle
     private static let close = CGRect(x: 264, y: 3, width: 9, height: 9)
+    private static let shadeButton = CGRect(x: 254, y: 3, width: 9, height: 9)
     private static let listButton = CGRect(x: 231, y: 202, width: 22, height: 18) // "LIST OPTS"
     /// Mini transport in the bottom-right corner, 10 px apart.
     private static let miniButtons: [Control] = [.previous, .play, .pause, .stop, .next, .eject]
@@ -36,6 +37,7 @@ final class PlaylistView: SkinView {
     private var scrollDrag = false
     private var scrollAccumulator: CGFloat = 0
     private var closePressed = false
+    private var shadePressed = false
     private var pressedMini: Int?
 
     private var visibleRows: Int { Int((Self.list.height - 2 * Self.listPadding) / Self.rowHeight) }
@@ -50,6 +52,7 @@ final class PlaylistView: SkinView {
     override var renderScale: CGFloat { scale * (window?.backingScaleFactor ?? 2) }
 
     override func render(in ctx: CGContext) {
+        if isShaded { return renderShade() }
         blit(S.PL.topLeft, 0, 0)
         for x in stride(from: 25, to: 250, by: 25) { blit(S.PL.topTile, CGFloat(x), 0) }
         blit(S.PL.title, 87, 0)
@@ -61,6 +64,7 @@ final class PlaylistView: SkinView {
         blit(S.PL.bottomLeft, 0, 194)
         blit(S.PL.bottomRight, 125, 194)
         if closePressed { blit(S.PL.closePressed, Self.close.minX, Self.close.minY) }
+        if shadePressed { blit(S.PL.shadePressed, Self.shadeButton.minX, Self.shadeButton.minY) }
 
         let style = skin.playlistStyle
         ctx.setFillColor(style.normalBG)
@@ -94,6 +98,21 @@ final class PlaylistView: SkinView {
         if let elapsed { text(mmss(elapsed), 191, 217) }
     }
 
+    /// The 275×14 strip: the current track and its length in the text.bmp font.
+    private func renderShade() {
+        blit(S.PL.shadeLeft, 0, 0)
+        for x in stride(from: 25, to: 225, by: 25) { blit(S.PL.shadeTile, CGFloat(x), 0) }
+        blit(S.PL.shadeRight, 225, 0)
+        if closePressed { blit(S.PL.closePressed, Self.close.minX, Self.close.minY) }
+        if shadePressed { blit(S.PL.expandPressed, Self.shadeButton.minX, Self.shadeButton.minY) }
+        guard let i = currentIndex, i < tracks.count else { return }
+        let t = tracks[i], time = mmss(t.duration)
+        let timeX = 245 - CGFloat(time.count * 5) // right edge 30 px from the window's
+        let title = "\(i + 1). " + (t.artist.isEmpty ? t.name : "\(t.artist) - \(t.name)")
+        text(String(title.prefix(Int((timeX - 5 - 5) / 5))), 5, 4)
+        text(time, timeX, 4)
+    }
+
     private static func attributed(_ s: String, _ font: NSFont, _ color: NSColor, _ align: NSTextAlignment) -> NSAttributedString {
         let p = NSMutableParagraphStyle()
         p.lineBreakMode = .byTruncatingTail
@@ -114,6 +133,10 @@ final class PlaylistView: SkinView {
         let p = basePoint(e)
         if Self.close.contains(p) {
             closePressed = true
+        } else if Self.shadeButton.contains(p) {
+            shadePressed = true
+        } else if isShaded || p.y < 20 { // title bar (the whole strip when shaded)
+            if e.clickCount == 2 { controller?.toggleShade(self) } else { beginWindowDrag() } // Winamp: double-click
         } else if CGRect(x: 258, y: 20, width: 12, height: 174).contains(p) { // the scrollbar column
             scrollDrag = true
             scroll(toHandleAt: p.y)
@@ -140,6 +163,8 @@ final class PlaylistView: SkinView {
     override func mouseUp(with e: NSEvent) {
         let p = basePoint(e)
         if closePressed, Self.close.contains(p) { controller?.togglePlaylist() }
+        if shadePressed, Self.shadeButton.contains(p) { controller?.toggleShade(self) }
+        shadePressed = false
         if let i = pressedMini, miniButton(at: p) == i { controller?.perform(Self.miniButtons[i]) }
         closePressed = false
         pressedMini = nil

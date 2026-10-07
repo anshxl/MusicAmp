@@ -17,6 +17,10 @@ final class SkinPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     }
 
+    // Borderless windows refuse key status by default; the skin needs it for Ctrl+D. Being a
+    // non-activating panel, becoming key does not activate MusicAmp or take the menu bar.
+    override var canBecomeKey: Bool { true }
+
     /// Moves the window, snapping to the edges of the screen under the mouse and of `others` (other windows).
     func moveSnapped(to origin: NSPoint, others: [NSRect] = []) {
         let mouse = NSEvent.mouseLocation

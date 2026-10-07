@@ -114,6 +114,31 @@ final class Visualizer {
         ctx.fill(peakRects)
     }
 
+    /// The shade-mode 38×5 version: every other thin band (or each thick bar twice), squeezed to 5 rows.
+    func drawMini(in ctx: CGContext, at origin: CGPoint, colors c: [CGColor]) {
+        guard mode != .off, c.count >= 24 else { return }
+        ctx.setFillColor(c[0])
+        ctx.fill(CGRect(origin: origin, size: CGSize(width: 38, height: 5)))
+        if mode == .oscilloscope {
+            guard !scope.isEmpty else { return }
+            ctx.setFillColor(c[18])
+            ctx.fill((0..<38).map { x in
+                let y = min(4, max(0, Int((2 - Double(scope[x * scope.count / 38]) * 3).rounded())))
+                return CGRect(x: Int(origin.x) + x, y: Int(origin.y) + y, width: 1, height: 1)
+            })
+            return
+        }
+        guard !bars.isEmpty else { return }
+        let heights = (0..<38).map { Int((bars[$0 * bars.count / 38] * 5 / Double(Self.height)).rounded()) }
+        for row in 0..<5 { // top row uses the top spectrum colour, bottom row a low one
+            let rects = heights.indices.filter { heights[$0] >= 5 - row }.map {
+                CGRect(x: Int(origin.x) + $0, y: Int(origin.y) + row, width: 1, height: 1)
+            }
+            ctx.setFillColor(c[2 + row * 3])
+            ctx.fill(rects)
+        }
+    }
+
     /// Colour 0 with colour-1 grid dots on every other pixel of every other row.
     private static func makeBackground(_ c: [CGColor]) -> CGImage {
         let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,

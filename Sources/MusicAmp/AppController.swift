@@ -66,6 +66,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     let eqDSP = EqualizerDSP()
     var eqSettings = EqualizerDSP.Settings()
     private static let frameNames = ["MusicAmpMain", "MusicAmpEQ", "MusicAmpPL"]
+    var statusItem: NSStatusItem?
+    var hotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -95,15 +97,18 @@ final class AppController: NSObject, NSApplicationDelegate {
             return p.setFrameUsingName(name)
         }
         if !restored[0] { panel.center() }
+        for (v, key) in shadeKeys { v.isShaded = defaults.bool(forKey: key) }
         applyScale(min(3, max(1, defaults.integer(forKey: "scale"))), keepDocked: false)
         if !restored[1] { eqPanel.setFrameTopLeftPoint(NSPoint(x: panel.frame.minX, y: panel.frame.minY)) }
         if !restored[2] { plPanel.setFrameTopLeftPoint(NSPoint(x: eqPanel.frame.minX, y: eqPanel.frame.minY)) }
         panel.orderFrontRegardless()
 
+        setUpMenuBar()
         observer = PlayerInfoObserver { [weak self] in self?.trackChanged($0) }
         poller = PositionPoller { [weak self] s in
             guard let self else { return }
             view.status = s
+            if eqView.isShaded { eqView.needsDisplay = true } // its volume slider
             if view.track.state != .stopped { plView.elapsed = s.position }
         }
         NotificationCenter.default.addObserver(self, selector: #selector(visibilityChanged),
@@ -141,8 +146,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        NSApp.unhide(nil)
-        panel.orderFrontRegardless()
+        showWindows()
         return true
     }
 
@@ -271,11 +275,12 @@ final class AppController: NSObject, NSApplicationDelegate {
             run { try MusicPlayer.setRepeat(view.status.repeatMode) }
         case .options:
             contextMenu().popUp(positioning: nil, at: NSPoint(x: 6 * view.scale, y: 12 * view.scale), in: view)
-        case .minimize: NSApp.hide(nil) // reopen by launching MusicAmp again
+        case .minimize: hideWindows() // back with the hotkey, the menu-bar item, or by launching MusicAmp again
         case .close: NSApp.terminate(nil)
         case .eq: toggleEqualizer()
         case .playlist: togglePlaylist()
-        case .shade: break // Phase 5
+        case .shade: toggleShade(view)
+        case .doubleSize: toggleDoubleSize()
         default: break
         }
     }
@@ -287,7 +292,13 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     func mainNeedsDisplay() { view.needsDisplay = true }
 
-    func setVolume(_ v: Int) { run { try MusicPlayer.setVolume(v) } }
+    /// Music's volume as last polled (0…100), for the EQ window's shade slider.
+    var volume: Int { view.status.volume }
+
+    func setVolume(_ v: Int) {
+        view.status.volume = v // show it now, not at the next volume poll
+        run { try MusicPlayer.setVolume(v) }
+    }
 
     func visualizerModeChanged() {
         defaults.set(view.visualizer.mode.rawValue, forKey: "visualizerMode")
@@ -308,6 +319,40 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func setSkin(_ skin: Skin) {
         for v in skinViews { v.skin = skin }
+    }
+
+    // MARK: Shade, double size, show/hide
+
+    private var shadeKeys: [(SkinView, String)] { [(view, "shadeMain"), (eqView, "shadeEQ"), (plView, "shadePL")] }
+
+    /// Folds or unfolds a window from its top edge. Windows docked below it move with its bottom edge,
+    /// as in Winamp, so the stack stays together.
+    func toggleShade(_ v: SkinView) {
+        guard let p = v.window else { return }
+        let others: [SkinPanel] = [panel, eqPanel, plPanel].filter { $0 !== p }
+        let below = SkinPanel.dockedGroup(p.frame, others.map(\.frame)).map { others[$0] }.filter { $0.frame.maxY <= p.frame.minY + 1 }
+        let oldHeight = p.frame.height
+        v.isShaded.toggle()
+        let height = v.currentSize.height * v.scale
+        p.setFrame(NSRect(x: p.frame.minX, y: p.frame.maxY - height, width: p.frame.width, height: height), display: true)
+        for w in below { w.setFrameOrigin(NSPoint(x: w.frame.minX, y: w.frame.minY + oldHeight - height)) }
+        if let key = shadeKeys.first(where: { $0.0 === v })?.1 { defaults.set(v.isShaded, forKey: key) }
+    }
+
+    /// Winamp's double size: 1× ↔ 2× (from 3×, back to 1×).
+    @objc func toggleDoubleSize() { applyScale(view.scale == 1 ? 2 : 1) }
+
+    var areWindowsShown: Bool { panel.isVisible }
+
+    @objc func toggleWindows() { areWindowsShown ? hideWindows() : showWindows() }
+
+    /// Hides every window; "eqVisible"/"plVisible" keep what to bring back.
+    func hideWindows() { for p in [panel!, eqPanel!, plPanel!] { p.orderOut(nil) } }
+
+    func showWindows() {
+        panel.orderFrontRegardless()
+        if defaults.bool(forKey: "eqVisible") { eqPanel.orderFrontRegardless() }
+        if defaults.bool(forKey: "plVisible") { plPanel.orderFrontRegardless(); refreshPlaylist(force: true) }
     }
 
     /// Windows that move with `w`. Only the main window drags its docked windows along, as in Winamp.
@@ -332,7 +377,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         let ratio = MainView.size.width * CGFloat(s) / panel.frame.width
         for v in skinViews {
             guard let p = v.window else { continue }
-            let size = NSSize(width: v.baseSize.width * CGFloat(s), height: v.baseSize.height * CGFloat(s))
+            let size = NSSize(width: v.currentSize.width * CGFloat(s), height: v.currentSize.height * CGFloat(s))
             var topLeft = NSPoint(x: p.frame.minX, y: p.frame.maxY)
             if docked.contains(ObjectIdentifier(p)) {
                 topLeft = NSPoint(x: anchor.x + (topLeft.x - anchor.x) * ratio, y: anchor.y + (topLeft.y - anchor.y) * ratio)
@@ -359,10 +404,13 @@ final class AppController: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Playlist Source", action: nil, keyEquivalent: "").submenu = playlistSourceMenu()
         menu.addItem(.separator())
         for s in 1...3 { add("Scale \(s)×", #selector(scaleItem(_:)), tag: s, on: Int(view.scale) == s) }
+        add("Double Size (⌃D)", #selector(toggleDoubleSize), on: view.scale >= 2)
         menu.addItem(.separator())
         for m in Visualizer.Mode.allCases {
             add("Visualizer: \(m.title)", #selector(visualizerItem(_:)), tag: m.rawValue, on: view.visualizer.mode == m)
         }
+        menu.addItem(.separator())
+        add("Launch at Login", #selector(toggleLaunchAtLogin), on: launchesAtLogin)
         menu.addItem(.separator())
         add("Quit MusicAmp", #selector(NSApplication.terminate(_:)))
         menu.items.last?.target = NSApp

@@ -11,6 +11,14 @@ class SkinView: NSView {
     var skin: Skin { didSet { needsDisplay = true } }
     var scale: CGFloat = 1 { didSet { needsDisplay = true } }
     let baseSize: CGSize
+    static let shadeHeight: CGFloat = 14
+    /// Winamp's "windowshade": the window folds to a 14 px strip.
+    var isShaded = false { didSet { needsDisplay = true } }
+    /// The size to draw and to size the window to, in base units.
+    var currentSize: CGSize { isShaded ? CGSize(width: baseSize.width, height: Self.shadeHeight) : baseSize }
+    /// region.txt section for the current state, or nil for a rectangular window.
+    var regionSection: String? { nil }
+    private var appliedRegion: [[CGPoint]]?
     private var windowDrag: (mouse: NSPoint, origin: NSPoint, followers: [(NSWindow, NSPoint)])?
     private var ctx: CGContext?
 
@@ -28,6 +36,32 @@ class SkinView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var wantsUpdateLayer: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+    override var needsPanelToBecomeKey: Bool { true } // keys (Ctrl+D) without activating the app
+
+    override func keyDown(with e: NSEvent) {
+        if e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control, e.charactersIgnoringModifiers == "d" {
+            controller?.toggleDoubleSize()
+        } else {
+            super.keyDown(with: e)
+        }
+    }
+
+    /// The skin's polygons for this window and state, if any.
+    var region: [[CGPoint]]? { regionSection.flatMap { skin.regions[$0] } }
+
+    private static func path(_ polygons: [[CGPoint]]) -> CGPath {
+        let path = CGMutablePath()
+        for p in polygons { path.addLines(between: p); path.closeSubpath() }
+        return path
+    }
+
+    /// Clicks outside a shaped window's region do not count as clicks on the skin.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let region, let hit = super.hitTest(point) else { return super.hitTest(point) }
+        let p = convert(point, from: superview)
+        return Self.path(region).contains(CGPoint(x: p.x / scale, y: p.y / scale)) ? hit : nil
+    }
     override func viewDidChangeBackingProperties() { needsDisplay = true } // the playlist's renderScale follows it
 
     /// Pixels per base unit of the offscreen bitmap. 1 keeps pixel art exact; the playlist overrides it for sharp text.
@@ -37,13 +71,18 @@ class SkinView: NSView {
     func render(in ctx: CGContext) {}
 
     override func updateLayer() {
-        let s = renderScale
-        guard let ctx = CGContext(data: nil, width: Int(baseSize.width * s), height: Int(baseSize.height * s),
+        let s = renderScale, size = currentSize
+        guard let ctx = CGContext(data: nil, width: Int(size.width * s), height: Int(size.height * s),
                                   bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
-        ctx.translateBy(x: 0, y: baseSize.height * s) // y down, like the view
+        ctx.translateBy(x: 0, y: size.height * s) // y down, like the view
         ctx.scaleBy(x: s, y: -s)
         ctx.interpolationQuality = .none
+        let region = self.region
+        if let region { // region.txt: pixels outside the polygons stay transparent
+            ctx.addPath(Self.path(region))
+            ctx.clip()
+        }
         NSGraphicsContext.saveGraphicsState() // NSString drawing (playlist) needs a current, flipped context
         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
         self.ctx = ctx
@@ -51,6 +90,10 @@ class SkinView: NSView {
         self.ctx = nil
         NSGraphicsContext.restoreGraphicsState()
         layer?.contents = ctx.makeImage()
+        if region != appliedRegion { // the window shadow follows the shape
+            appliedRegion = region
+            window?.invalidateShadow()
+        }
     }
 
     /// The last rendered frame at base resolution (× renderScale).

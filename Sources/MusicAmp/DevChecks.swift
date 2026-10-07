@@ -1,5 +1,6 @@
 import AppKit
 import AudioTap
+import Carbon.HIToolbox
 import ZIPFoundation
 
 /// `MusicAmp --selftest`: skin parsing checks against the bundled default skin and a synthetic broken skin.
@@ -39,6 +40,25 @@ func skinSelfTest(defaultSkinURL: URL) throws {
     precondition(style.normal == CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1), "lowercase key")
     precondition(style.current == CGColor(srgbRed: 0, green: 1, blue: 0, alpha: 1), "colour without #")
     precondition(style.selectedBG == base.playlistStyle.selectedBG && style.font == "Arial", "bad values fall back")
+
+    // region.txt: sections, comments, mixed separators; mismatched counts are ignored.
+    let regions = Skin.parseRegions("""
+        ; comment
+        [Normal]
+        NumPoints=4, 3 ; trailing comment
+        PointList=0,0, 275,0 275,116 0,116  10,10 20,10 15,20
+        [WindowShade]
+        NumPoints=4
+        PointList=0,0 1,1
+        """)
+    precondition(regions["normal"]?.count == 2 && regions["normal"]?[1][2] == CGPoint(x: 15, y: 20), "region polygons")
+    precondition(regions["windowshade"] == nil && base.regions.isEmpty, "bad or absent regions are ignored")
+
+    // Hotkey specs.
+    precondition(HotKey.parse("ctrl+option+w").map { $0.0 == UInt32(kVK_ANSI_W) && $0.1 == UInt32(controlKey | optionKey) } == true)
+    precondition(HotKey.parse("Cmd + Shift + F5") != nil && HotKey.parse("w") == nil && HotKey.parse("ctrl+w+x") == nil
+                 && HotKey.parse("ctrl+banana") == nil, "hotkey parsing")
+    precondition(HotKey.symbols("ctrl+option+w") == "⌃⌥W", "hotkey symbols")
 
     // Window snapping: within 20 pt of an edge (inside or outside) snaps; farther does not.
     let screen = NSRect(x: 0, y: 25, width: 1000, height: 800) // visible frame above a 25 pt Dock

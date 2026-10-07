@@ -21,6 +21,15 @@ enum S {
     static let shade = (Sprite("titlebar", 0, 18, 9, 9), Sprite("titlebar", 9, 18, 9, 9))
     static let close = (Sprite("titlebar", 18, 0, 9, 9), Sprite("titlebar", 18, 9, 9, 9))
     static let clutterBar = Sprite("titlebar", 304, 0, 8, 43)
+    static let clutterDoubleSelected = Sprite("titlebar", 328, 69, 8, 8) // the "D" button, lit when doubled
+
+    // Main window shade mode (titlebar.bmp)
+    enum Shade {
+        static let background = Sprite("titlebar", 27, 29, 275, 14)
+        static let button = (Sprite("titlebar", 0, 27, 9, 9), Sprite("titlebar", 9, 27, 9, 9)) // in shade: normal, pressed
+        static let positionBackground = Sprite("titlebar", 0, 36, 17, 7)
+        static let positionThumb = [17, 20, 23].map { Sprite("titlebar", $0, 36, 3, 7) } // left, middle, right third
+    }
 
     // cbuttons.bmp: (normal, pressed)
     static let previous = (Sprite("cbuttons", 0, 0, 23, 18), Sprite("cbuttons", 0, 18, 23, 18))
@@ -71,6 +80,12 @@ enum S {
         static let graphBackground = Sprite("eqmain", 0, 294, 113, 19)
         static func graphLineColor(row: Int) -> Sprite { Sprite("eqmain", 115, 294 + row, 1, 1) }
         static let preampLine = Sprite("eqmain", 0, 314, 113, 1)
+        // eq_ex.bmp: shade mode
+        static let shadeBackground = Sprite("eq_ex", 0, 0, 275, 14)
+        static let shadeVolumeThumb = [1, 4, 7].map { Sprite("eq_ex", $0, 30, 3, 7) } // left, centre, right third
+        static let shadeBalanceThumb = [11, 14, 17].map { Sprite("eq_ex", $0, 30, 3, 7) }
+        static let shadeButtonPressed = Sprite("eq_ex", 1, 38, 9, 9) // "maximize", in shade
+        static let shadeClose = (Sprite("eq_ex", 11, 38, 9, 9), Sprite("eq_ex", 11, 47, 9, 9))
         /// Slider background frame 0…27: 14 per row, 15 px apart; rows 65 px apart.
         static func sliderBackground(_ n: Int) -> Sprite { Sprite("eqmain", 13 + n % 14 * 15, 164 + n / 14 * 65, 14, 63) }
     }
@@ -87,6 +102,11 @@ enum S {
         static let bottomRight = Sprite("pledit", 126, 72, 150, 38)
         static let scrollHandle = (Sprite("pledit", 52, 53, 8, 18), Sprite("pledit", 61, 53, 8, 18))
         static let closePressed = Sprite("pledit", 52, 42, 9, 9)
+        static let shadePressed = Sprite("pledit", 62, 42, 9, 9) // "collapse", in normal mode
+        static let expandPressed = Sprite("pledit", 150, 42, 9, 9) // in shade mode
+        static let shadeLeft = Sprite("pledit", 72, 42, 25, 14)
+        static let shadeTile = Sprite("pledit", 72, 57, 25, 14)
+        static let shadeRight = Sprite("pledit", 99, 42, 50, 14)
     }
 
     /// text.bmp: 5×6 cells. Unknown characters render as a space.

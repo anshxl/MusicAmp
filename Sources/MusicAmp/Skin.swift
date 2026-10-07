@@ -7,7 +7,7 @@ import ZIPFoundation
 final class Skin {
     static let sheets: Set<String> = [
         "main", "titlebar", "cbuttons", "numbers", "nums_ex", "text", "posbar",
-        "volume", "balance", "playpaus", "monoster", "shufrep", "eqmain", "pledit",
+        "volume", "balance", "playpaus", "monoster", "shufrep", "eqmain", "pledit", "eq_ex",
     ]
     static let maxEntrySize: UInt64 = 8 << 20 // per entry, counted while inflating (zip bombs lie in headers)
     static let maxImageSide = 2_048 // real skin bitmaps are under 500 px; a BMP header can claim anything
@@ -15,6 +15,9 @@ final class Skin {
     let url: URL
     let visColors: [CGColor] // 24 colours, see viscolor.txt
     let playlistStyle: PlaylistStyle
+    /// region.txt polygons by lowercased section ("normal", "windowshade", "equalizer", "equalizerws").
+    /// Only from the skin itself: no region means a rectangular window.
+    let regions: [String: [[CGPoint]]]
     private let images: [String: CGImage]
     private let fallback: Skin?
     private var cache: [Sprite: CGImage] = [:]
@@ -24,14 +27,15 @@ final class Skin {
         self.fallback = fallback
         let archive = try Archive(url: url, accessMode: .read)
         var images: [String: CGImage] = [:]
-        var visText: String?, pleditText: String?
+        var visText: String?, pleditText: String?, regionText: String?
         for entry in archive where entry.type == .file && entry.uncompressedSize < Self.maxEntrySize {
             // Match on the file name only, case-insensitively: skins often nest files in a folder.
             let file = (entry.path as NSString).lastPathComponent.lowercased()
             let base = (file as NSString).deletingPathExtension
             guard file.hasSuffix(".bmp") && Self.sheets.contains(base) && images[base] == nil
                     || file == "viscolor.txt" && visText == nil
-                    || file == "pledit.txt" && pleditText == nil else { continue }
+                    || file == "pledit.txt" && pleditText == nil
+                    || file == "region.txt" && regionText == nil else { continue }
             var data = Data()
             _ = try archive.extract(entry, skipCRC32: true) { chunk in
                 guard UInt64(data.count + chunk.count) <= Self.maxEntrySize else {
@@ -43,6 +47,8 @@ final class Skin {
                 visText = String(decoding: data, as: UTF8.self)
             } else if file == "pledit.txt" {
                 pleditText = String(decoding: data, as: UTF8.self)
+            } else if file == "region.txt" {
+                regionText = String(decoding: data, as: UTF8.self)
             } else if let src = CGImageSourceCreateWithData(data as CFData, nil),
                       let img = CGImageSourceCreateImageAtIndex(src, 0, nil),
                       img.width <= Self.maxImageSide, img.height <= Self.maxImageSide {
@@ -53,6 +59,7 @@ final class Skin {
         let parsed = Self.parseVisColors(visText ?? "")
         visColors = parsed + (fallback?.visColors.dropFirst(parsed.count) ?? [])
         playlistStyle = PlaylistStyle(ini: pleditText ?? "", fallback: fallback?.playlistStyle)
+        regions = Self.parseRegions(regionText ?? "")
         if fallback == nil && (visColors.count < 24 || images.count < Self.sheets.count - 1) {
             throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
         }
@@ -80,6 +87,39 @@ final class Skin {
         img = img ?? fallback?.image(s)
         cache[s] = img
         return img
+    }
+
+    /// region.txt: `[Section]`, `NumPoints=4,4,…` (points per polygon) and `PointList=x,y x,y …` on one line.
+    /// Comments start with ";". A section whose counts do not match its points is ignored.
+    static func parseRegions(_ text: String) -> [String: [[CGPoint]]] {
+        var result: [String: [[CGPoint]]] = [:]
+        var section = "", counts: [Int] = [], points: [Int] = []
+        func flush() {
+            guard !section.isEmpty, result[section] == nil, !counts.isEmpty, counts.allSatisfy({ $0 >= 3 }),
+                  counts.reduce(0, +) * 2 == points.count else { return }
+            var polygons: [[CGPoint]] = [], i = 0
+            for n in counts {
+                polygons.append((0..<n).map { CGPoint(x: points[i + 2 * $0], y: points[i + 2 * $0 + 1]) })
+                i += 2 * n
+            }
+            result[section] = polygons
+        }
+        let numbers = { (s: Substring) in s.split(whereSeparator: { !$0.isNumber && $0 != "-" }).compactMap { Int($0) } }
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)[0].trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") && line.hasSuffix("]") {
+                flush()
+                section = line.dropFirst().dropLast().lowercased()
+                counts = []
+                points = []
+            } else if let eq = line.firstIndex(of: "=") {
+                let key = line[..<eq].trimmingCharacters(in: .whitespaces).lowercased()
+                if key == "numpoints" { counts = numbers(line[line.index(after: eq)...]) }
+                if key == "pointlist" { points = numbers(line[line.index(after: eq)...]) }
+            }
+        }
+        flush()
+        return result
     }
 
     /// One colour per line: the first three integers are r, g, b. Comments and junk are ignored.

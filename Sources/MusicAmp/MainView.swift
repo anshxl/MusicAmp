@@ -1,36 +1,50 @@
 import AppKit
 import MusicControl
 
-/// Clickable areas of the main window, in 275×116 base coordinates. Hit-tested in declaration order.
+/// Clickable areas of the main window, in base coordinates. Hit-tested in declaration order.
 enum Control: CaseIterable {
-    case options, minimize, shade, close
+    case options, minimize, shade, close, doubleSize
     case previous, play, pause, stop, next, eject, shuffle, repeatButton, eq, playlist
     case position, volume, balance, time, visualizer, titleBar
 
-    var rect: CGRect {
-        let r: (Int, Int, Int, Int) = switch self {
-        case .options: (6, 3, 9, 9)
-        case .minimize: (244, 3, 9, 9)
-        case .shade: (254, 3, 9, 9)
-        case .close: (264, 3, 9, 9)
-        case .previous: (16, 88, 23, 18)
-        case .play: (39, 88, 23, 18)
-        case .pause: (62, 88, 23, 18)
-        case .stop: (85, 88, 23, 18)
-        case .next: (108, 88, 22, 18)
-        case .eject: (136, 89, 22, 16)
-        case .shuffle: (164, 89, 47, 15)
-        case .repeatButton: (210, 89, 28, 15)
-        case .eq: (219, 58, 23, 12)
-        case .playlist: (242, 58, 23, 12)
-        case .position: (16, 72, 248, 10)
-        case .volume: (107, 57, 68, 13)
-        case .balance: (177, 57, 38, 13)
-        case .time: (36, 26, 63, 13)
-        case .visualizer: (24, 43, 76, 16)
-        case .titleBar: (0, 0, 275, 14)
+    /// Where the control is in the normal (275×116) or shaded (275×14) layout; nil if it is not shown.
+    func rect(shaded: Bool) -> CGRect? {
+        let r: (Int, Int, Int, Int)?
+        switch (self, shaded) {
+        case (.options, _): r = (6, 3, 9, 9)
+        case (.minimize, _): r = (244, 3, 9, 9)
+        case (.shade, _): r = (254, 3, 9, 9)
+        case (.close, _): r = (264, 3, 9, 9)
+        case (.titleBar, _): r = (0, 0, 275, 14)
+        case (.doubleSize, false): r = (10, 47, 8, 8) // the clutter bar's "D"
+        case (.previous, false): r = (16, 88, 23, 18)
+        case (.play, false): r = (39, 88, 23, 18)
+        case (.pause, false): r = (62, 88, 23, 18)
+        case (.stop, false): r = (85, 88, 23, 18)
+        case (.next, false): r = (108, 88, 22, 18)
+        case (.eject, false): r = (136, 89, 22, 16)
+        case (.shuffle, false): r = (164, 89, 47, 15)
+        case (.repeatButton, false): r = (210, 89, 28, 15)
+        case (.eq, false): r = (219, 58, 23, 12)
+        case (.playlist, false): r = (242, 58, 23, 12)
+        case (.position, false): r = (16, 72, 248, 10)
+        case (.volume, false): r = (107, 57, 68, 13)
+        case (.balance, false): r = (177, 57, 38, 13)
+        case (.time, false): r = (36, 26, 63, 13)
+        case (.visualizer, false): r = (24, 43, 76, 16)
+        // Shade: the mini transport is drawn in the background art.
+        case (.previous, true): r = (169, 2, 7, 10)
+        case (.play, true): r = (176, 2, 10, 10)
+        case (.pause, true): r = (186, 2, 9, 10)
+        case (.stop, true): r = (195, 2, 9, 10)
+        case (.next, true): r = (204, 2, 10, 10)
+        case (.eject, true): r = (215, 2, 10, 10)
+        case (.position, true): r = (226, 4, 17, 7)
+        case (.time, true): r = (127, 4, 30, 6)
+        case (.visualizer, true): r = (79, 5, 38, 5)
+        default: r = nil
         }
-        return CGRect(x: r.0, y: r.1, width: r.2, height: r.3)
+        return r.map { CGRect(x: $0.0, y: $0.1, width: $0.2, height: $0.3) }
     }
 
     var isButton: Bool { ![.position, .volume, .balance, .time, .visualizer, .titleBar].contains(self) }
@@ -68,6 +82,8 @@ final class MainView: SkinView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    override var regionSection: String? { isShaded ? "windowshade" : "normal" }
+
     /// Called once per animation frame (30 fps).
     func advance() {
         tick += 1
@@ -81,8 +97,10 @@ final class MainView: SkinView {
 
     override func render(in ctx: CGContext) {
         func button(_ c: Control, _ sprites: (Sprite, Sprite)) {
-            blit(pressed == c && pressedInside ? sprites.1 : sprites.0, c.rect.minX, c.rect.minY)
+            guard let r = c.rect(shaded: isShaded) else { return }
+            blit(pressed == c && pressedInside ? sprites.1 : sprites.0, r.minX, r.minY)
         }
+        if isShaded { return renderShade(ctx, button: button) }
 
         let state = track.state
         blit(S.main, 0, 0)
@@ -92,6 +110,7 @@ final class MainView: SkinView {
         button(.shade, S.shade)
         button(.close, S.close)
         blit(S.clutterBar, 10, 22)
+        if scale >= 2 { blit(S.clutterDoubleSelected, 10, 47) }
 
         blit(state == .playing ? S.playing : state == .paused ? S.paused : S.stopped, 26, 28)
 
@@ -155,16 +174,38 @@ final class MainView: SkinView {
         blit(S.repeatButton[(status.repeatMode != .off ? 2 : 0) + (pressed == .repeatButton ? down : 0)], 210, 89)
     }
 
+    /// The 275×14 strip: title-bar buttons, mini visualizer, time and position.
+    private func renderShade(_ ctx: CGContext, button: (Control, (Sprite, Sprite)) -> Void) {
+        let state = track.state
+        blit(S.Shade.background, 0, 0)
+        button(.options, S.options)
+        button(.minimize, S.minimize)
+        button(.shade, S.Shade.button)
+        button(.close, S.close)
+        visualizer.drawMini(in: ctx, at: CGPoint(x: 79, y: 5), colors: skin.visColors)
+        if state != .stopped && (state != .paused || (tick / 30) % 2 == 0) {
+            let pos = dragFraction.map { $0 * track.duration } ?? status.position
+            let t = max(0, Int(showRemaining ? track.duration - pos : pos))
+            text((showRemaining ? "-" : " ") + String(format: "%2d:%02d", t / 60 % 100, t % 60), 127, 4)
+        }
+        blit(S.Shade.positionBackground, 226, 4)
+        if state != .stopped, track.duration > 0 {
+            let f = dragFraction ?? min(1, status.position / track.duration)
+            blit(S.Shade.positionThumb[f < 1.0 / 3 ? 0 : f > 2.0 / 3 ? 2 : 1], 226 + CGFloat(f * 14).rounded(), 4)
+        }
+    }
+
     private func mmss(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
     // MARK: Mouse
 
     override func mouseDown(with e: NSEvent) {
         let p = basePoint(e)
-        guard let c = Control.allCases.first(where: { $0.rect.contains(p) }) else {
+        guard let c = Control.allCases.first(where: { $0.rect(shaded: isShaded)?.contains(p) == true }) else {
             return beginWindowDrag() // the rest of the skin drags the window too, like Winamp
         }
         switch c {
+        case .titleBar where e.clickCount == 2: controller?.toggleShade(self) // Winamp: double-click title bar
         case .titleBar: beginWindowDrag()
         case .time: showRemaining.toggle()
         case .visualizer:
@@ -190,7 +231,7 @@ final class MainView: SkinView {
             dragVolume = volumeAt(p)
             controller?.setVolume(dragVolume!)
         } else if let c = pressed {
-            pressedInside = c.rect.contains(p)
+            pressedInside = c.rect(shaded: isShaded)?.contains(p) == true
         }
         needsDisplay = true
     }
@@ -209,7 +250,9 @@ final class MainView: SkinView {
         needsDisplay = true
     }
 
-    private func fraction(_ p: CGPoint) -> Double { min(1, max(0, Double(p.x - 16 - 14.5) / 219)) }
+    private func fraction(_ p: CGPoint) -> Double {
+        isShaded ? min(1, max(0, Double(p.x - 226 - 1.5) / 14)) : min(1, max(0, Double(p.x - 16 - 14.5) / 219))
+    }
     private func volumeAt(_ p: CGPoint) -> Int { min(100, max(0, Int(Double(p.x - 107 - 7) / 51 * 100))) }
 
     // MARK: Drag and drop a .wsz

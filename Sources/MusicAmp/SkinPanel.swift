@@ -1,20 +1,17 @@
 import AppKit
 
-/// Borderless, non-activating floating panel that snaps to screen edges while dragged.
+/// Borderless, non-activating panel at normal window level (stays on one Space) that snaps to screen edges while dragged.
 final class SkinPanel: NSPanel {
     static let snapDistance: CGFloat = 20 // 10 (Winamp's) felt too subtle
 
     init(size: NSSize) {
         super.init(contentRect: NSRect(origin: .zero, size: size),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        level = .floating
-        isFloatingPanel = true
         hidesOnDeactivate = false // the app is an accessory, so it is almost never active
         becomesKeyOnlyIfNeeded = true
         isOpaque = false
         backgroundColor = .clear
         hasShadow = true
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     }
 
     // Borderless windows refuse key status by default; the skin needs it for Ctrl+D. Being a

@@ -38,7 +38,7 @@ each build gets a new ad-hoc signature.
 | Action | How |
 |---|---|
 | Show or hide MusicAmp | **⌃⌥W** from any app, or the ♪ menu-bar item |
-| Menu (skins, scale, windows, visualizer, Launch at Login) | Right-click any window, or the ♪ menu-bar item |
+| Menu (skins, scale, windows, visualizer, album art, Launch at Login) | Right-click any window, or the ♪ menu-bar item |
 | Change skin | Drop a `.wsz` file on the window. Thousands at [skins.webamp.org](https://skins.webamp.org) |
 | Equalizer / playlist | **EQ** and **PL** buttons |
 | Equalizer on/off, anti-clipping | **ON** and **AUTO** in the equalizer |
@@ -46,6 +46,7 @@ each build gets a new ad-hoc signature.
 | Shade (fold a window to a strip) | Title-bar button, or double-click a title bar |
 | Double size | **D** on the left edge of the main window, or **⌃D** |
 | Visualizer mode | Click the visualizer |
+| Album art | *Album Art Background* in the menu: the current cover, pixelated, behind the main window, and the visualizer in its colours |
 | Time elapsed / remaining | Click the time |
 
 Windows snap to screen edges and to each other. Windows touching the main window move with it.
@@ -88,7 +89,7 @@ Turn off **Launch at Login** first if you enabled it.
 
 ```sh
 swift build
-.build/debug/MusicAmp --selftest   # EQ, skin parsing, snapping and hotkey checks
+.build/debug/MusicAmp --selftest   # EQ, skin parsing, album art, snapping and hotkey checks
 .build/debug/MusicCtl              # Music.app control CLI (run without arguments for commands)
 .build/debug/TapSpike              # audio tap test: prints level and spectrum of Music's output
 ```

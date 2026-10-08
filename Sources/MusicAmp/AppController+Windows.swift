@@ -101,7 +101,7 @@ extension AppController {
 
     func playPlaylistTrack(_ index: Int) {
         guard let id = lastPlaylistID else { return }
-        run { try MusicPlayer.playTrack(at: index + 1, ofPlaylist: id) }
+        startQueue(playlistID: id, count: plView.tracks.count, index: index)
     }
 
     /// "Now Playing" plus the library and every playlist, for the LIST button and the context menu.

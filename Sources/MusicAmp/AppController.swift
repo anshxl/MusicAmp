@@ -67,6 +67,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     var eqSettings = EqualizerDSP.Settings()
     private static let frameNames = ["MusicAmpMain", "MusicAmpEQ", "MusicAmpPL"]
     var statusItem: NSStatusItem?
+    var playQueue: PlayQueue?          // see AppController+Queue.swift
+    var queueStopRequested = false     // MusicAmp's Stop: do not advance on the "stopped" that follows
+    var lastQueuedPlay = Date.distantPast
     var hotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -156,11 +159,13 @@ final class AppController: NSObject, NSApplicationDelegate {
     // MARK: Music state
 
     private func trackChanged(_ t: TrackInfo) {
+        queueTrackChanged(t)
         let newTrack = t.name != view.track.name || t.album != view.track.album
         view.track = t
         refreshPlaylist()
-        guard t.state != .stopped else { return plView.elapsed = nil }
+        guard t.state != .stopped else { view.albumArt = nil; return plView.elapsed = nil }
         if newTrack { view.format = (try? MusicPlayer.audioFormat()) ?? (0, 0) }
+        if newTrack || view.albumArt == nil { refreshAlbumArt() }
         if view.format.hz == 0 { view.format.hz = Int(sampleRate) }
         startTap()
     }
@@ -172,7 +177,15 @@ final class AppController: NSObject, NSApplicationDelegate {
         tap = nil
         ring.clear()
         view.track.state = .stopped
+        view.albumArt = nil
         plView.elapsed = nil
+    }
+
+    var showsAlbumArt: Bool { defaults.bool(forKey: "albumArt") }
+
+    private func refreshAlbumArt() {
+        guard showsAlbumArt, view.track.state != .stopped else { return view.albumArt = nil }
+        view.albumArt = (try? MusicPlayer.artwork())?.flatMap { AlbumArt(data: $0) }
     }
 
     /// One tap feeds both the visualizer and the EQ. It sits in an aggregate device together with the
@@ -261,11 +274,13 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     func perform(_ control: Control) {
         switch control {
-        case .previous: run(MusicPlayer.previous)
+        case .previous: if !stepQueue(forward: false) { run(MusicPlayer.previous) }
         case .play: run(MusicPlayer.play)
         case .pause: run(MusicPlayer.playPause)
-        case .stop: run(MusicPlayer.stop)
-        case .next: run(MusicPlayer.next)
+        case .stop:
+            if playQueue != nil { queueStopRequested = true }
+            run(MusicPlayer.stop)
+        case .next: if !stepQueue(forward: true) { run(MusicPlayer.next) }
         case .eject: NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Music.app"))
         case .shuffle:
             view.status.shuffle.toggle()
@@ -294,6 +309,8 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     /// Music's volume as last polled (0…100), for the EQ window's shade slider.
     var volume: Int { view.status.volume }
+    /// Last polled position, volume, shuffle and repeat.
+    var playerStatus: PlayerStatus { view.status }
 
     func setVolume(_ v: Int) {
         view.status.volume = v // show it now, not at the next volume poll
@@ -409,6 +426,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         for m in Visualizer.Mode.allCases {
             add("Visualizer: \(m.title)", #selector(visualizerItem(_:)), tag: m.rawValue, on: view.visualizer.mode == m)
         }
+        add("Album Art Background", #selector(toggleAlbumArt), on: showsAlbumArt)
         menu.addItem(.separator())
         add("Launch at Login", #selector(toggleLaunchAtLogin), on: launchesAtLogin)
         menu.addItem(.separator())
@@ -434,5 +452,10 @@ final class AppController: NSObject, NSApplicationDelegate {
     @objc private func visualizerItem(_ item: NSMenuItem) {
         view.visualizer.mode = Visualizer.Mode(rawValue: item.tag)!
         visualizerModeChanged()
+    }
+
+    @objc private func toggleAlbumArt() {
+        defaults.set(!showsAlbumArt, forKey: "albumArt")
+        refreshAlbumArt()
     }
 }

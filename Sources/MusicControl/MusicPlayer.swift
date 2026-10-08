@@ -71,6 +71,15 @@ public enum MusicPlayer {
                          album: r[3].stringValue ?? "", duration: r[4].double)
     }
 
+    /// The current track's first artwork as encoded image bytes (JPEG or PNG), or nil if it has none.
+    public static func artwork() throws -> Data? {
+        let r = try tellMusic("""
+            if player state is stopped or (count of artworks of current track) is 0 then return ""
+            return data of artwork 1 of current track
+            """)
+        return r.descriptorType == typeUnicodeText ? nil : r.data
+    }
+
     /// All tracks of the current playlist in one Apple Event per property (3 total, not one per track).
     public static func currentPlaylist() throws -> [PlaylistTrack] { try tracks(of: "current playlist") }
 

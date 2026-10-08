@@ -65,6 +65,8 @@ final class MainView: SkinView {
     }
     var format = (kbps: 0, hz: 0) { didSet { needsDisplay = true } }
     var showRemaining = false { didSet { needsDisplay = true } }
+    var albumArt: AlbumArt? { didSet { needsDisplay = true } }
+    private var visColors: [CGColor] { albumArt?.visColors(over: skin.visColors) ?? skin.visColors }
     let visualizer: Visualizer
 
     private var pressed: Control?
@@ -104,6 +106,15 @@ final class MainView: SkinView {
 
         let state = track.state
         blit(S.main, 0, 0)
+        // Before the other sprites, so controls stay readable over bright art; only main.bmp's dark areas show it.
+        if let art = albumArt?.overlay {
+            ctx.saveGState() // CGImage draws bottom-up; flip locally inside the y-down view
+            ctx.translateBy(x: 0, y: Self.size.height)
+            ctx.scaleBy(x: 1, y: -1)
+            ctx.setBlendMode(.lighten)
+            ctx.draw(art, in: CGRect(origin: .zero, size: Self.size))
+            ctx.restoreGState()
+        }
         blit(S.titleBarSelected, 0, 0)
         button(.options, S.options)
         button(.minimize, S.minimize)
@@ -125,7 +136,7 @@ final class MainView: SkinView {
             }
         }
 
-        visualizer.draw(in: ctx, at: CGPoint(x: 24, y: 43), colors: skin.visColors)
+        visualizer.draw(in: ctx, at: CGPoint(x: 24, y: 43), colors: visColors)
 
         // Scrolling title, one 5 px character step every 7 frames when it does not fit.
         ctx.saveGState()
@@ -182,7 +193,7 @@ final class MainView: SkinView {
         button(.minimize, S.minimize)
         button(.shade, S.Shade.button)
         button(.close, S.close)
-        visualizer.drawMini(in: ctx, at: CGPoint(x: 79, y: 5), colors: skin.visColors)
+        visualizer.drawMini(in: ctx, at: CGPoint(x: 79, y: 5), colors: visColors)
         if state != .stopped && (state != .paused || (tick / 30) % 2 == 0) {
             let pos = dragFraction.map { $0 * track.duration } ?? status.position
             let t = max(0, Int(showRemaining ? track.duration - pos : pos))

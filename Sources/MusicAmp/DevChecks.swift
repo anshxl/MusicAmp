@@ -6,6 +6,8 @@ import ZIPFoundation
 /// `MusicAmp --selftest`: skin parsing checks against the bundled default skin and a synthetic broken skin.
 func skinSelfTest(defaultSkinURL: URL) throws {
     EqualizerDSP.selfTest()
+    PlayQueue.selfTest()
+    AlbumArt.selfTest()
     let base = try Skin(url: defaultSkinURL, fallback: nil)
     precondition(base.visColors.count == 24, "default viscolor.txt should have 24 colours")
     for s in [S.main, S.titleBarSelected, S.play.0, S.digit(9, ex: false), S.char("z"), S.volumeThumb.0, S.positionThumb.1,

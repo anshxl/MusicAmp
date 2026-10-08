@@ -1,9 +1,11 @@
-<img src="Support/AppIcon.png" width="128" alt="MusicAmp icon">
+<p align="center"><img src="Support/AppIcon.png" width="128" alt="MusicAmp icon"></p>
 
 # MusicAmp
 
 A Winamp 2-style player for Apple Music on macOS. It controls Music.app and draws classic Winamp `.wsz` skins,
 with a real spectrum analyser, a 10-band equalizer and a playlist window.
+
+<p align="center"><img src="ss.png" width="552" alt="MusicAmp main window and equalizer"></p>
 
 ## Requirements
 
